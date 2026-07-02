@@ -1,23 +1,25 @@
-"""Orquestrador do pipeline híbrido (CLI).
+"""Orquestrador do pipeline híbrido (CLI) — dados reais da Base dos Dados.
 
 Subcomandos:
-  generate      gera dados sintéticos na landing zone
-  ingest-batch  landing -> Bronze (batch)
-  stream        produz + consome eventos -> Bronze (streaming)
+  download      baixa as tabelas reais do BigQuery para data/real (requer credencial GCP)
+  ingest-batch  data/real (Parquet) -> Bronze (batch)
+  stream        produz + consome eventos de alunos -> Bronze (streaming)
   silver        Bronze -> Silver (limpeza, integração, qualidade)
   gold          Silver -> Gold (camada analítica)
-  run-all       executa o pipeline completo fim-a-fim
+  run-all       executa o pipeline completo (ingestão -> gold) e imprime resumo
   report        imprime um resumo dos datasets Gold
 
 Uso:
+  python -m src.pipeline download --project fiap-fase2   # 1x (baixa os dados)
   python -m src.pipeline run-all
-  python -m src.pipeline run-all --students 20000 --events 500
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
+
+import polars as pl
 
 from .common.config import load_config
 from .common.lake_io import read_table
@@ -31,9 +33,14 @@ from .transform.silver import build_silver
 log = get_logger("pipeline")
 
 
-def cmd_generate(args: argparse.Namespace) -> None:
-    from scripts.generate_sample_data import generate
-    generate(students=args.students, per_uf=args.per_uf, seed=args.seed)
+def cmd_download(args: argparse.Namespace) -> None:
+    from scripts import bq_download
+    argv = ["bq_download"] + (["--project", args.project] if args.project else [])
+    old, sys.argv = sys.argv, argv
+    try:
+        bq_download.main()
+    finally:
+        sys.argv = old
 
 
 def cmd_ingest_batch(_args: argparse.Namespace) -> None:
@@ -67,22 +74,26 @@ def cmd_gold(_args: argparse.Namespace) -> None:
 
 def cmd_run_all(args: argparse.Namespace) -> None:
     """Executa o pipeline completo com uma única coleta de métricas."""
-    from scripts.generate_sample_data import generate
-
-    mc = MetricsCollector()
-    log.info("========== PIPELINE HÍBRIDO — EXECUÇÃO COMPLETA ==========")
-
-    if not args.skip_generate:
-        generate(students=args.students, per_uf=args.per_uf, seed=args.seed)
+    cfg = load_config()
+    mc = MetricsCollector(cfg)
+    log.info("========== PIPELINE HÍBRIDO — EXECUÇÃO COMPLETA (dados reais) ==========")
 
     # Ingestão híbrida
-    ingest_batch(metrics=mc)
-    produce_events(n_events=args.events)
-    consume_stream(metrics=mc)
+    ingest_batch(cfg=cfg, metrics=mc)
+    if not args.skip_stream:
+        # tópico limpo a cada execução completa (reprodutibilidade)
+        topic = load_config().get("streaming.topic_file", "data/streaming/topic_alunos.jsonl")
+        from pathlib import Path
+        from .common.config import REPO_ROOT
+        p = REPO_ROOT / topic
+        if p.exists():
+            p.unlink()
+        produce_events(n_events=args.events, cfg=cfg)
+        consume_stream(cfg=cfg, metrics=mc)
 
     # Medalhão
-    build_silver(metrics=mc)
-    build_gold(metrics=mc)
+    build_silver(cfg=cfg, metrics=mc)
+    build_gold(cfg=cfg, metrics=mc)
 
     mc.flush()
     print(mc.summary())
@@ -93,57 +104,54 @@ def cmd_run_all(args: argparse.Namespace) -> None:
 
 def cmd_report(_args: argparse.Namespace) -> None:
     cfg = load_config()
-    print("\n" + "=" * 66)
-    print(" AMOSTRA DA CAMADA GOLD")
-    print("=" * 66)
+    print("\n" + "=" * 70)
+    print(" AMOSTRA DA CAMADA GOLD (dados reais — Indicador Criança Alfabetizada)")
+    print("=" * 70)
     try:
         br = read_table("gold", "indicador_brasil", cfg=cfg).sort("ano")
-        print("\n▶ Indicador nacional de alfabetização (Brasil) por ano:")
-        with_cols = ["ano", "total_alunos", "pct_alfabetizado", "meta_alfabetizacao", "gap_meta", "atingiu_meta"]
-        print(br.select([c for c in with_cols if c in br.columns]))
+        print("\n▶ Indicador nacional de alfabetização (Brasil) por ano [% escala 0-100]:")
+        print(br)
 
-        import polars as pl
         uf = read_table("gold", "indicador_uf", cfg=cfg)
         ult = uf["ano"].max()
-        print(f"\n▶ Top 5 UFs por % alfabetizado em {ult}:")
+        print(f"\n▶ Top 5 UFs por taxa de alfabetização em {ult}:")
         print(
             uf.filter(pl.col("ano") == ult)
-            .sort("pct_alfabetizado", descending=True)
-            .select("sigla_uf", "nome_uf", "regiao", "pct_alfabetizado", "atingiu_meta")
+            .sort("taxa_alfabetizacao", descending=True)
+            .select("sigla_uf", "nome_uf", "regiao", "taxa_alfabetizacao", "meta_alfabetizacao", "atingiu_meta")
             .head(5)
         )
+
+        val = read_table("gold", "validacao_microdado", cfg=cfg)
+        d = val["diferenca"].abs().mean()
+        print(f"\n▶ Validação microdado×oficial: diferença média absoluta = {d:.2f} p.p. "
+              f"({val.height} municípios×ano)")
     except FileNotFoundError:
         print("Camada Gold ainda não construída. Rode: python -m src.pipeline run-all")
-    print("=" * 66)
+    print("=" * 70)
 
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="pipeline", description="Pipeline híbrido de alfabetização (FIAP Fase 2).")
     sub = p.add_subparsers(dest="command", required=True)
 
-    def add_gen_args(sp):
-        sp.add_argument("--students", type=int, default=8000)
-        sp.add_argument("--per-uf", type=int, default=3)
-        sp.add_argument("--seed", type=int, default=42)
+    d = sub.add_parser("download", help="baixa as tabelas reais do BigQuery")
+    d.add_argument("--project", default=None, help="ID do projeto GCP (billing)")
+    d.set_defaults(func=cmd_download)
 
-    g = sub.add_parser("generate", help="gera dados sintéticos")
-    add_gen_args(g)
-    g.set_defaults(func=cmd_generate)
+    sub.add_parser("ingest-batch", help="data/real -> Bronze").set_defaults(func=cmd_ingest_batch)
 
-    sub.add_parser("ingest-batch", help="landing -> Bronze").set_defaults(func=cmd_ingest_batch)
-
-    s = sub.add_parser("stream", help="produz + consome eventos -> Bronze")
-    s.add_argument("--events", type=int, default=200)
+    s = sub.add_parser("stream", help="produz + consome eventos de alunos -> Bronze")
+    s.add_argument("--events", type=int, default=2000)
     s.set_defaults(func=cmd_stream)
 
     sub.add_parser("silver", help="Bronze -> Silver").set_defaults(func=cmd_silver)
     sub.add_parser("gold", help="Silver -> Gold").set_defaults(func=cmd_gold)
     sub.add_parser("report", help="resumo da camada Gold").set_defaults(func=cmd_report)
 
-    r = sub.add_parser("run-all", help="pipeline completo fim-a-fim")
-    add_gen_args(r)
-    r.add_argument("--events", type=int, default=200)
-    r.add_argument("--skip-generate", action="store_true", help="não regerar dados")
+    r = sub.add_parser("run-all", help="pipeline completo (ingestão -> gold)")
+    r.add_argument("--events", type=int, default=2000)
+    r.add_argument("--skip-stream", action="store_true", help="não gerar/consumir streaming")
     r.set_defaults(func=cmd_run_all)
 
     return p

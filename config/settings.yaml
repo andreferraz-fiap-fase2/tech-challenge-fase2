@@ -1,60 +1,61 @@
 # ============================================================================
 # Configuração central do pipeline
-# Espelha o layout de nuvem (GCP). Em execução local, `lake_root` é o filesystem.
+# Espelha o layout de nuvem (GCP). Em execução local, o lake fica no filesystem.
 # ============================================================================
 
 project:
   name: tech-challenge-fase2
   domain: indicador-crianca-alfabetizada
 
-# --- Alvo de nuvem (usado por IaC e pelo adaptador basedosdados) ---
+# --- Alvo de nuvem (usado pela publicação GCP e pela ingestão via BigQuery) ---
 gcp:
-  project_id: "SEU_PROJETO_GCP"      # sobrescrever via env GCP_PROJECT_ID
+  project_id: "fiap-fase2"           # sobrescrever via env GCP_PROJECT_ID
   region: "us-central1"
   buckets:
-    bronze: "gs://tc2-alfabetizacao-bronze"
-    silver: "gs://tc2-alfabetizacao-silver"
-    gold:   "gs://tc2-alfabetizacao-gold"
-  bigquery_dataset: "alfabetizacao"
+    bronze: "fiap-fase2-alfabetizacao-bronze"
+    silver: "fiap-fase2-alfabetizacao-silver"
+    gold:   "fiap-fase2-alfabetizacao-gold"
+  bigquery_dataset: "alfabetizacao_gold"
   pubsub_topic: "indicador-updates"
 
 # --- Execução local (raiz do data lake no filesystem) ---
 lake:
   root: "data"
+  landing: "data/real"     # onde os Parquet reais foram baixados do BigQuery
   bronze: "data/bronze"
   silver: "data/silver"
   gold:   "data/gold"
   format: "parquet"
   compression: "zstd"
 
-# --- Referências reais na Base dos Dados (para o adaptador de produção) ---
-# Dataset: br_inep_indicador_crianca_alfabetizada
+# --- Fonte real na Base dos Dados (BigQuery) ---
 basedosdados:
-  billing_project_id: "SEU_PROJETO_GCP"
-  dataset_id: "br_inep_indicador_crianca_alfabetizada"
-  tables:
+  billing_project_id: "fiap-fase2"
+  source_project: "basedosdados"
+  dataset_id: "br_inep_avaliacao_alfabetizacao"
+  tables: [alunos, municipio, uf, meta_alfabetizacao_brasil,
+           meta_alfabetizacao_uf, meta_alfabetizacao_municipio, dicionario]
+  diretorios:
     uf: "br_bd_diretorios_brasil.uf"
     municipio: "br_bd_diretorios_brasil.municipio"
-    meta_brasil: "meta_brasil"
-    meta_uf: "meta_uf"
-    meta_municipio: "meta_municipio"
-    indicador_aluno: "indicador"
 
-# --- Streaming (simulação de Pub/Sub) ---
+# --- Streaming (simulação de Pub/Sub: novos eventos de medição de alunos) ---
 streaming:
-  topic_file: "data/streaming/topic_indicador.jsonl"
-  micro_batch_size: 50
+  topic_file: "data/streaming/topic_alunos.jsonl"
+  micro_batch_size: 500
   poll_interval_seconds: 1
 
 # --- Qualidade de dados: limiares que disparam alertas ---
 quality:
-  max_null_ratio: 0.05          # 5% de nulos por coluna crítica
+  max_null_ratio: 0.05          # 5% de nulos tolerado em colunas não-críticas
   max_duplicate_ratio: 0.0      # nenhuma duplicata em PKs
   proficiencia_min: 0.0
-  proficiencia_max: 1000.0
+  proficiencia_max: 1000.0      # escala Saeb
+  taxa_min: 0.0
+  taxa_max: 100.0               # taxa_alfabetizacao vem em escala 0-100
   ponto_corte_saeb: 743         # ponto de corte oficial (Alfabetiza Brasil 2023)
 
 # --- Monitoramento ---
 monitoring:
   metrics_dir: "monitoring/metrics"
-  latency_warning_seconds: 30
+  latency_warning_seconds: 60
