@@ -54,9 +54,11 @@ flowchart LR
 
 ## Fluxo de dados
 
-1. **Ingestão batch** (`src/ingestion/batch.py`): lê a landing zone (Parquet real
-   baixado do BigQuery em `data/real/`) e grava na **Bronze**, sem transformações,
-   adicionando metadados (`_ingested_at`, `_source`, `_ingestion_type`).
+0. **Landing / Raw** (`data/real/`): Parquet exatamente como vem do BigQuery — bytes
+   da origem, **sem nenhum tratamento**.
+1. **Ingestão batch → Bronze** (`src/ingestion/batch.py`): tratamento **mínimo** —
+   materializa no formato Parquet do lake e adiciona metadados de auditoria
+   (`_ingested_at`, `_source`, `_ingestion_type`). Sem lógica de negócio.
 2. **Ingestão streaming** (`src/ingestion/streaming.py`): um produtor publica
    novos eventos de medição de alunos num tópico (JSONL simulando Pub/Sub); o
    consumidor processa em **micro-batches** e persiste em `bronze/alunos_stream`,
