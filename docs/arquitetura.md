@@ -54,19 +54,20 @@ flowchart LR
 
 ## Fluxo de dados
 
-1. **Ingestão batch** (`src/ingestion/batch.py`): lê a landing zone (CSV) e grava
-   na **Bronze** em Parquet, sem transformações, adicionando metadados
-   (`_ingested_at`, `_source_file`, `_ingestion_type`).
+1. **Ingestão batch** (`src/ingestion/batch.py`): lê a landing zone (Parquet real
+   baixado do BigQuery em `data/real/`) e grava na **Bronze**, sem transformações,
+   adicionando metadados (`_ingested_at`, `_source`, `_ingestion_type`).
 2. **Ingestão streaming** (`src/ingestion/streaming.py`): um produtor publica
-   eventos em um tópico (arquivo JSONL simulando Pub/Sub); o consumidor processa
-   em **micro-batches** e persiste em `bronze/indicador_stream`, medindo latência.
-3. **Silver** (`src/transform/silver.py`): limpeza, tipagem, normalização de
-   chaves, deduplicação, tratamento de nulos, **integração** de batch+streaming e
-   de fatos+dimensões, e **validação de qualidade** (fail-fast em falhas
-   bloqueantes).
-4. **Gold** (`src/transform/gold.py`): agrega o indicador por município/UF/Brasil,
-   compara **meta vs resultado**, calcula **evolução temporal** e monta uma tabela
-   de **features para ML**.
+   novos eventos de medição de alunos num tópico (JSONL simulando Pub/Sub); o
+   consumidor processa em **micro-batches** e persiste em `bronze/alunos_stream`,
+   medindo latência.
+3. **Silver** (`src/transform/silver.py`): limpeza, tipagem, decodificação de
+   códigos (dicionário), normalização de chaves, deduplicação, tratamento de
+   ausentes, **integração** de batch+streaming e de fatos+dimensões, e **validação
+   de qualidade** (fail-fast em falhas bloqueantes).
+4. **Gold** (`src/transform/gold.py`): indicador oficial (rede Pública) por
+   município/UF/Brasil, comparação **meta vs resultado**, evolução temporal,
+   **validação microdado × oficial** e tabela de **features para ML**.
 
 ## Modelo de dados (Gold)
 
@@ -76,10 +77,15 @@ flowchart LR
 | `indicador_uf` | UF × ano | ranking estadual, comparação regional |
 | `indicador_brasil` | ano | KPI nacional vs meta 2030 |
 | `evolucao_temporal` | UF × ano | séries temporais (variação YoY) |
+| `validacao_microdado` | município × ano | qualidade: microdado reagregado vs taxa oficial |
 | `ml_features` | município × ano | treino de modelos preditivos |
 
 Regra de negócio central: aluno **alfabetizado** quando `proficiencia >= 743`
-(ponto de corte oficial do Saeb — Pesquisa Alfabetiza Brasil, 2023).
+(ponto de corte oficial do Saeb — Pesquisa Alfabetiza Brasil, 2023). O indicador
+consolidado usa a **rede Pública (Estadual+Municipal)**, coerente com a meta nacional.
+
+Fonte real: dataset `br_inep_avaliacao_alfabetizacao` (BigQuery / Base dos Dados),
+baixado via `scripts/bq_download.py` para `data/real/` (Parquet).
 
 ## Mapeamento Local ↔ GCP
 
