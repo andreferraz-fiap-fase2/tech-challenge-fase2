@@ -1,0 +1,12 @@
+# Núcleo do pipeline (execução local, sem Java/Spark)
+duckdb==1.5.4
+polars==1.42.1
+pyarrow==24.0.0
+pandas==3.0.3
+pyyaml==6.0.3
+
+# --- Opcional: ingestão real da Base dos Dados (requer projeto GCP + billing) ---
+# basedosdados>=2.0.0
+# google-cloud-bigquery>=3.0.0
+# google-cloud-storage>=2.0.0
+# google-cloud-pubsub>=2.0.0

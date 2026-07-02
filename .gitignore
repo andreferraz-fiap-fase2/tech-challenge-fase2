@@ -1,0 +1,56 @@
+# ---- Claude / AI assistant artifacts (NÃO versionar) ----
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+.claude*/
+**/CLAUDE.md
+.cursor/
+.aider*
+.anthropic/
+
+# ---- Python ----
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# ---- Data lake (dados gerados/ingeridos não vão pro git; recriado ao rodar) ----
+data/
+*.parquet
+*.duckdb
+*.duckdb.wal
+
+# ---- Métricas / relatórios / logs de execução (gerados) ----
+monitoring/metrics/*.json
+monitoring/quality/*.json
+logs/
+*.log
+
+# ---- Credenciais / segredos ----
+*.env
+.env*
+credentials*.json
+service-account*.json
+gcp-key*.json
+*.pem
+
+# ---- Terraform ----
+infra/terraform/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+
+# ---- OS / IDE ----
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

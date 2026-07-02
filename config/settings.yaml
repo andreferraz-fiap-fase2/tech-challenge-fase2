@@ -1,0 +1,60 @@
+# ============================================================================
+# Configuração central do pipeline
+# Espelha o layout de nuvem (GCP). Em execução local, `lake_root` é o filesystem.
+# ============================================================================
+
+project:
+  name: tech-challenge-fase2
+  domain: indicador-crianca-alfabetizada
+
+# --- Alvo de nuvem (usado por IaC e pelo adaptador basedosdados) ---
+gcp:
+  project_id: "SEU_PROJETO_GCP"      # sobrescrever via env GCP_PROJECT_ID
+  region: "us-central1"
+  buckets:
+    bronze: "gs://tc2-alfabetizacao-bronze"
+    silver: "gs://tc2-alfabetizacao-silver"
+    gold:   "gs://tc2-alfabetizacao-gold"
+  bigquery_dataset: "alfabetizacao"
+  pubsub_topic: "indicador-updates"
+
+# --- Execução local (raiz do data lake no filesystem) ---
+lake:
+  root: "data"
+  bronze: "data/bronze"
+  silver: "data/silver"
+  gold:   "data/gold"
+  format: "parquet"
+  compression: "zstd"
+
+# --- Referências reais na Base dos Dados (para o adaptador de produção) ---
+# Dataset: br_inep_indicador_crianca_alfabetizada
+basedosdados:
+  billing_project_id: "SEU_PROJETO_GCP"
+  dataset_id: "br_inep_indicador_crianca_alfabetizada"
+  tables:
+    uf: "br_bd_diretorios_brasil.uf"
+    municipio: "br_bd_diretorios_brasil.municipio"
+    meta_brasil: "meta_brasil"
+    meta_uf: "meta_uf"
+    meta_municipio: "meta_municipio"
+    indicador_aluno: "indicador"
+
+# --- Streaming (simulação de Pub/Sub) ---
+streaming:
+  topic_file: "data/streaming/topic_indicador.jsonl"
+  micro_batch_size: 50
+  poll_interval_seconds: 1
+
+# --- Qualidade de dados: limiares que disparam alertas ---
+quality:
+  max_null_ratio: 0.05          # 5% de nulos por coluna crítica
+  max_duplicate_ratio: 0.0      # nenhuma duplicata em PKs
+  proficiencia_min: 0.0
+  proficiencia_max: 1000.0
+  ponto_corte_saeb: 743         # ponto de corte oficial (Alfabetiza Brasil 2023)
+
+# --- Monitoramento ---
+monitoring:
+  metrics_dir: "monitoring/metrics"
+  latency_warning_seconds: 30
