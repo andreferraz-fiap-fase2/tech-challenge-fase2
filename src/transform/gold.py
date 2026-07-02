@@ -1,14 +1,15 @@
-"""Transformação SILVER → GOLD (camada analítica).
+"""Transformação SILVER → GOLD (camada analítica) sobre os dados reais.
 
-Cria datasets prontos para dashboards, análises estatísticas e ML:
-  - gold_indicador_municipio : indicador de alfabetização por município/ano + gap vs meta
-  - gold_indicador_uf        : agregado por UF/ano + gap vs meta
-  - gold_indicador_brasil    : agregado nacional por ano + gap vs meta
-  - gold_evolucao_temporal   : evolução YoY do indicador por UF
-  - gold_ml_features         : tabela larga (uma linha por município/ano) para ML
+Datasets prontos para dashboards, estatística e ML:
+  - gold_indicador_municipio : indicador oficial por município/ano + meta + gap
+  - gold_indicador_uf        : idem por UF
+  - gold_indicador_brasil    : taxa nacional por ano + meta + gap
+  - gold_evolucao_temporal   : evolução da taxa por UF (2023→2024)
+  - gold_validacao_microdado : taxa recalculada dos microdados de alunos vs oficial
+  - gold_ml_features         : tabela larga (município × ano) para ML
 
-Todas as métricas derivam do ponto de corte oficial do Saeb (743): um aluno é
-`alfabetizado` quando proficiência >= 743, e o indicador é o % de alfabetizados.
+Indicador = `taxa_alfabetizacao` (% de alunos do 2º ano com proficiência >= 743,
+o ponto de corte do Saeb). Escala 0–100. Comparação usa a meta do respectivo ano.
 """
 
 from __future__ import annotations
@@ -16,50 +17,47 @@ from __future__ import annotations
 import polars as pl
 
 from ..common.config import Config, load_config
-from ..common.lake_io import read_table, write_table
+from ..common.lake_io import read_table
 from ..common.logging_setup import get_logger
 from ..monitoring.metrics import MetricsCollector
+from ..common.lake_io import write_table
 
 log = get_logger("transform.gold")
+
+
+# A meta nacional é definida para a rede Pública; a rede 'Total' (0) quase não é
+# preenchida nos dados. Usamos 'Pública (Est+Mun)' como indicador oficial consolidado.
+REDE_INDICADOR = "Pública (Est+Mun)"
+REDES_PUBLICAS = {"Estadual", "Municipal"}  # microdados equivalentes à rede pública
+
+
+def _publica(df: pl.DataFrame) -> pl.DataFrame:
+    """Mantém a rede Pública (Estadual+Municipal) — o indicador oficial consolidado."""
+    return df.filter(pl.col("rede_nome") == REDE_INDICADOR)
 
 
 def build_gold(cfg: Config | None = None, metrics: MetricsCollector | None = None) -> None:
     cfg = cfg or load_config()
     metrics = metrics or MetricsCollector(cfg)
 
-    fato = read_table("silver", "fato_indicador", cfg=cfg)
     dim_mun = read_table("silver", "dim_municipio", cfg=cfg)
     dim_uf = read_table("silver", "dim_uf", cfg=cfg)
-    meta_mun = read_table("silver", "meta_municipio", cfg=cfg)
-    meta_uf = read_table("silver", "meta_uf", cfg=cfg)
-    meta_br = read_table("silver", "meta_brasil", cfg=cfg)
 
     # ------------------------------------------------------------------ #
-    # 1) Indicador por município/ano
+    # 1) Indicador por município/ano (oficial) + meta + gap
     # ------------------------------------------------------------------ #
     with metrics.stage("gold:indicador_municipio", "gold") as m:
-        m.rows_in = fato.height
+        fm = _publica(read_table("silver", "fato_municipio", cfg=cfg))
+        meta = read_table("silver", "meta_municipio_long", cfg=cfg)
+        m.rows_in = fm.height
         ind_mun = (
-            fato.group_by("id_municipio", "ano")
-            .agg(
-                pl.len().alias("total_alunos"),
-                pl.col("alfabetizado").sum().alias("total_alfabetizados"),
-                pl.col("proficiencia").mean().round(1).alias("proficiencia_media"),
-            )
-            .with_columns(
-                (pl.col("total_alfabetizados") / pl.col("total_alunos"))
-                .round(4).alias("pct_alfabetizado")
-            )
-            # enriquecimento com dimensões
+            fm.select("ano", "id_municipio", "taxa_alfabetizacao", "media_portugues")
             .join(dim_mun, on="id_municipio", how="left")
             .join(dim_uf.select("sigla_uf", "nome_uf", "regiao"), on="sigla_uf", how="left")
-            # comparação meta vs resultado
-            .join(meta_mun, on=["id_municipio", "ano"], how="left")
+            .join(meta, left_on=["id_municipio", "ano"], right_on=["id_municipio", "ano_meta"], how="left")
             .with_columns(
-                (pl.col("pct_alfabetizado") - pl.col("meta_alfabetizacao"))
-                .round(4).alias("gap_meta"),
-                (pl.col("pct_alfabetizado") >= pl.col("meta_alfabetizacao"))
-                .alias("atingiu_meta"),
+                (pl.col("taxa_alfabetizacao") - pl.col("meta_alfabetizacao")).round(2).alias("gap_meta"),
+                (pl.col("taxa_alfabetizacao") >= pl.col("meta_alfabetizacao")).alias("atingiu_meta"),
             )
             .sort("ano", "sigla_uf", "id_municipio")
         )
@@ -70,25 +68,16 @@ def build_gold(cfg: Config | None = None, metrics: MetricsCollector | None = Non
     # 2) Indicador por UF/ano
     # ------------------------------------------------------------------ #
     with metrics.stage("gold:indicador_uf", "gold") as m:
-        fato_uf = fato.join(dim_mun.select("id_municipio", "sigla_uf"), on="id_municipio", how="left")
+        fu = _publica(read_table("silver", "fato_uf", cfg=cfg))
+        meta_uf = read_table("silver", "meta_uf_long", cfg=cfg)
+        m.rows_in = fu.height
         ind_uf = (
-            fato_uf.group_by("sigla_uf", "ano")
-            .agg(
-                pl.len().alias("total_alunos"),
-                pl.col("alfabetizado").sum().alias("total_alfabetizados"),
-                pl.col("proficiencia").mean().round(1).alias("proficiencia_media"),
-            )
-            .with_columns(
-                (pl.col("total_alfabetizados") / pl.col("total_alunos"))
-                .round(4).alias("pct_alfabetizado")
-            )
+            fu.select("ano", "sigla_uf", "taxa_alfabetizacao", "media_portugues")
             .join(dim_uf, on="sigla_uf", how="left")
-            .join(meta_uf, on=["sigla_uf", "ano"], how="left")
+            .join(meta_uf, left_on=["sigla_uf", "ano"], right_on=["sigla_uf", "ano_meta"], how="left")
             .with_columns(
-                (pl.col("pct_alfabetizado") - pl.col("meta_alfabetizacao"))
-                .round(4).alias("gap_meta"),
-                (pl.col("pct_alfabetizado") >= pl.col("meta_alfabetizacao"))
-                .alias("atingiu_meta"),
+                (pl.col("taxa_alfabetizacao") - pl.col("meta_alfabetizacao")).round(2).alias("gap_meta"),
+                (pl.col("taxa_alfabetizacao") >= pl.col("meta_alfabetizacao")).alias("atingiu_meta"),
             )
             .sort("ano", "sigla_uf")
         )
@@ -99,23 +88,13 @@ def build_gold(cfg: Config | None = None, metrics: MetricsCollector | None = Non
     # 3) Indicador nacional por ano
     # ------------------------------------------------------------------ #
     with metrics.stage("gold:indicador_brasil", "gold") as m:
+        taxa_br = read_table("silver", "taxa_brasil", cfg=cfg)
+        meta_br = read_table("silver", "meta_brasil_long", cfg=cfg)
         ind_br = (
-            fato.group_by("ano")
-            .agg(
-                pl.len().alias("total_alunos"),
-                pl.col("alfabetizado").sum().alias("total_alfabetizados"),
-                pl.col("proficiencia").mean().round(1).alias("proficiencia_media"),
-            )
+            taxa_br.join(meta_br, left_on="ano", right_on="ano_meta", how="left")
             .with_columns(
-                (pl.col("total_alfabetizados") / pl.col("total_alunos"))
-                .round(4).alias("pct_alfabetizado")
-            )
-            .join(meta_br, on="ano", how="left")
-            .with_columns(
-                (pl.col("pct_alfabetizado") - pl.col("meta_alfabetizacao"))
-                .round(4).alias("gap_meta"),
-                (pl.col("pct_alfabetizado") >= pl.col("meta_alfabetizacao"))
-                .alias("atingiu_meta"),
+                (pl.col("taxa_alfabetizacao") - pl.col("meta_alfabetizacao")).round(2).alias("gap_meta"),
+                (pl.col("taxa_alfabetizacao") >= pl.col("meta_alfabetizacao")).alias("atingiu_meta"),
             )
             .sort("ano")
         )
@@ -123,32 +102,59 @@ def build_gold(cfg: Config | None = None, metrics: MetricsCollector | None = Non
         m.rows_out = ind_br.height
 
     # ------------------------------------------------------------------ #
-    # 4) Evolução temporal (YoY) por UF
+    # 4) Evolução temporal por UF (variação YoY da taxa)
     # ------------------------------------------------------------------ #
     with metrics.stage("gold:evolucao_temporal", "gold") as m:
         evo = (
-            ind_uf.select("sigla_uf", "nome_uf", "regiao", "ano", "pct_alfabetizado")
+            ind_uf.select("sigla_uf", "nome_uf", "regiao", "ano", "taxa_alfabetizacao")
             .sort("sigla_uf", "ano")
             .with_columns(
-                pl.col("pct_alfabetizado").diff().over("sigla_uf").round(4).alias("variacao_yoy")
+                pl.col("taxa_alfabetizacao").diff().over("sigla_uf").round(2).alias("variacao_yoy")
             )
         )
         write_table(evo, "gold", "evolucao_temporal", cfg=cfg)
         m.rows_out = evo.height
 
     # ------------------------------------------------------------------ #
-    # 5) Features para ML (uma linha por município/ano)
+    # 5) Validação: taxa recalculada dos microdados de alunos vs oficial
+    # ------------------------------------------------------------------ #
+    with metrics.stage("gold:validacao_microdado", "gold") as m:
+        aluno = read_table("silver", "fato_aluno", cfg=cfg).filter(
+            pl.col("presente") & pl.col("rede_nome").is_in(REDES_PUBLICAS))
+        m.rows_in = aluno.height
+        peso = pl.col("peso_aluno").fill_null(1.0)
+        micro = (
+            aluno.group_by("id_municipio", "ano")
+            .agg(
+                pl.len().alias("alunos_avaliados"),
+                (100 * (pl.when(pl.col("alfabetizado")).then(peso).otherwise(0.0)).sum()
+                 / peso.sum()).round(2).alias("taxa_microdado"),
+                pl.col("proficiencia").mean().round(1).alias("proficiencia_media"),
+            )
+        )
+        oficial = _publica(read_table("silver", "fato_municipio", cfg=cfg)).select(
+            "id_municipio", "ano", pl.col("taxa_alfabetizacao").alias("taxa_oficial"))
+        valida = (
+            micro.join(oficial, on=["id_municipio", "ano"], how="inner")
+            .with_columns((pl.col("taxa_microdado") - pl.col("taxa_oficial")).round(2).alias("diferenca"))
+            .sort("ano", "id_municipio")
+        )
+        write_table(valida, "gold", "validacao_microdado", partition_by=["ano"], cfg=cfg)
+        m.rows_out = valida.height
+
+    # ------------------------------------------------------------------ #
+    # 6) Features para ML (município × ano)
     # ------------------------------------------------------------------ #
     with metrics.stage("gold:ml_features", "gold") as m:
         feats = (
             ind_mun.select(
                 "id_municipio", "nome_municipio", "sigla_uf", "regiao", "ano",
-                "total_alunos", "proficiencia_media", "pct_alfabetizado",
-                "meta_alfabetizacao", "gap_meta", "atingiu_meta",
+                "taxa_alfabetizacao", "media_portugues", "meta_alfabetizacao",
+                "gap_meta", "atingiu_meta",
             )
             .sort("id_municipio", "ano")
             .with_columns(
-                pl.col("pct_alfabetizado").shift().over("id_municipio").alias("pct_alfabetizado_ano_anterior"),
+                pl.col("taxa_alfabetizacao").shift().over("id_municipio").alias("taxa_ano_anterior"),
             )
         )
         write_table(feats, "gold", "ml_features", cfg=cfg)
