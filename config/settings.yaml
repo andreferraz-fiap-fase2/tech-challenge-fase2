@@ -16,10 +16,14 @@ gcp:
     silver: "fiap-fase2-alfabetizacao-silver"
     gold:   "fiap-fase2-alfabetizacao-gold"
   bigquery_dataset: "alfabetizacao_gold"
+  bigquery_dataset_silver: "alfabetizacao_silver"
   pubsub_topic: "indicador-updates"
 
-# --- Execução local (raiz do data lake no filesystem) ---
+# --- Data lake ---
+# mode: "local" = filesystem (data/); "gcs" = direto nos buckets GCP (cloud-native).
+# Sobrescrevível via env LAKE_MODE ou flag --cloud do pipeline.
 lake:
+  mode: "local"
   root: "data"
   landing: "data/real"     # onde os Parquet reais foram baixados do BigQuery
   bronze: "data/bronze"

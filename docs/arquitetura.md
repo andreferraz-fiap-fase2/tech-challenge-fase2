@@ -6,9 +6,15 @@ Pipeline **híbrido (batch + streaming)** que integra fontes do indicador de
 alfabetização seguindo a **Arquitetura Medalhão** (Bronze → Silver → Gold),
 com qualidade de dados, observabilidade e FinOps.
 
-O código roda **localmente** (data lake em `data/`, Parquet particionado) e é
-**projetado para GCP** — cada componente local tem equivalente de nuvem
-provisionável via Terraform (`infra/terraform/`).
+O código roda em dois modos com o **mesmo código de transformação**:
+
+- **local** (`lake.mode: local`, padrão): data lake em `data/`, Parquet particionado;
+- **cloud-native** (`--cloud` / `LAKE_MODE=gcs`): Bronze/Silver/Gold lidos e
+  gravados **diretamente nos buckets GCS** via `fsspec/gcsfs`, e o BigQuery
+  carregado **direto das URIs `gs://`** — sem upload intermediário.
+
+Cada componente tem equivalente de nuvem provisionável via Terraform
+(`infra/terraform/`).
 
 ## Diagrama da pipeline
 
@@ -93,10 +99,21 @@ baixado via `scripts/bq_download.py` para `data/real/` (Parquet).
 
 | Componente | Local | GCP |
 |---|---|---|
-| Data lake | `data/{bronze,silver,gold}` (Parquet) | GCS (3 buckets) |
+| Data lake | `data/{bronze,silver,gold}` (Parquet) | GCS (3 buckets) — **nativo via `--cloud`** |
 | Ingestão batch | job Python (`ingest_batch`) | Cloud Run / Dataproc + Cloud Scheduler |
 | Streaming | JSONL + consumidor | Pub/Sub + Dataflow/Cloud Function |
-| Camada analítica | Parquet Gold | BigQuery (external/native tables) |
+| Camada analítica | Parquet Gold | BigQuery (`alfabetizacao_gold` + `alfabetizacao_silver`) |
 | Monitoramento | logs + JSON de métricas | Cloud Logging + Cloud Monitoring |
 | Orquestração | CLI `src/pipeline.py` | Cloud Composer (Airflow) |
 | Qualidade | `src/quality` | mesmo código + testes no CI |
+
+### Modo cloud-native (detalhe)
+
+O IO do lake é abstraído em `src/common/lake_io.py`, que resolve o destino por
+`Config.lake_uri()`: filesystem local, `gs://<bucket>` (gcsfs) ou qualquer URI
+fsspec (`memory://` nos testes). No modo remoto, as colunas de partição são
+mantidas também **dentro** dos arquivos (além do layout Hive `ano=YYYY/`):
+os tipos ficam exatos na releitura e o `load_table_from_uri` do BigQuery
+funciona com um curinga simples (`gs://bucket/tabela/*`), sem configuração de
+partição. A landing (`data/real`) e o tópico de streaming ficam locais — são a
+fronteira com a fonte (no GCP real seriam o próprio BigQuery público e o Pub/Sub).

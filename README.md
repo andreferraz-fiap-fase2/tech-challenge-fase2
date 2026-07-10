@@ -176,6 +176,29 @@ export GOOGLE_APPLICATION_CREDENTIALS=caminho/para/gcp-key.json
 
 > A credencial e os dados ficam em `data/` (no `.gitignore`) — **nunca** vão ao repositório.
 
+### Modo cloud-native (lake direto no GCS)
+
+Com `--cloud` (ou `LAKE_MODE=gcs`), o **mesmo pipeline** lê e grava as camadas
+Bronze/Silver/Gold **diretamente nos buckets GCS** via `fsspec/gcsfs` — sem
+etapa de upload posterior. A publicação no BigQuery então carrega as tabelas
+**direto das URIs `gs://`** (`load_table_from_uri`): zero re-upload e zero
+tráfego local (FinOps).
+
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS=caminho/para/gcp-key.json
+
+# pipeline inteiro rodando contra o data lake na nuvem
+.venv/Scripts/python -m src.pipeline --cloud run-all
+
+# BigQuery: datasets alfabetizacao_gold + alfabetizacao_silver a partir do GCS
+.venv/Scripts/python -m src.publish.gcp --cloud --project SEU_PROJETO_GCP --only bigquery
+```
+
+No modo local, `src.publish.gcp` continua fazendo o caminho clássico
+"processa local, publica na nuvem" (upload dos Parquet + load via DataFrame).
+A landing zone (`data/real`) e o tópico de streaming simulado permanecem
+locais por definição — são a fronteira com a fonte.
+
 ### Deploy opcional na GCP
 ```bash
 cd infra/terraform && cp terraform.tfvars.example terraform.tfvars   # preencha project_id

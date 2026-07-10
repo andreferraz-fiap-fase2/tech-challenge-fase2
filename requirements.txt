@@ -12,3 +12,6 @@ db-dtypes==1.7.0
 
 # Publicação na nuvem (data lake em GCS) — opcional
 google-cloud-storage>=2.0.0
+
+# Modo cloud-native (lake lido/gravado direto no GCS via fsspec)
+gcsfs>=2024.1.0
