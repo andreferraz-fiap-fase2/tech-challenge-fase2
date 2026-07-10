@@ -199,6 +199,19 @@ No modo local, `src.publish.gcp` continua fazendo o caminho clássico
 A landing zone (`data/real`) e o tópico de streaming simulado permanecem
 locais por definição — são a fronteira com a fonte.
 
+### Execução 100% na nuvem (Cloud Run Job)
+
+O mesmo container roda o pipeline inteiro **dentro da GCP** (serverless, paga
+por minuto de execução): download da fonte pública → Medalhão direto no GCS →
+BigQuery. Deploy e execução em [`docs/cloudrun.md`](docs/cloudrun.md):
+
+```bash
+gcloud run jobs deploy alfabetizacao-pipeline --source . --region us-central1 \
+  --cpu 2 --memory 4Gi --set-env-vars GCP_PROJECT_ID=SEU_PROJETO \
+  --service-account SA_DO_PIPELINE@SEU_PROJETO.iam.gserviceaccount.com
+gcloud run jobs execute alfabetizacao-pipeline --region us-central1 --wait
+```
+
 ### Deploy opcional na GCP
 ```bash
 cd infra/terraform && cp terraform.tfvars.example terraform.tfvars   # preencha project_id

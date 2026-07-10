@@ -100,7 +100,7 @@ baixado via `scripts/bq_download.py` para `data/real/` (Parquet).
 | Componente | Local | GCP |
 |---|---|---|
 | Data lake | `data/{bronze,silver,gold}` (Parquet) | GCS (3 buckets) — **nativo via `--cloud`** |
-| Ingestão batch | job Python (`ingest_batch`) | Cloud Run / Dataproc + Cloud Scheduler |
+| Ingestão batch | job Python (`ingest_batch`) | **Cloud Run Job (implementado — `docs/cloudrun.md`)** + Cloud Scheduler |
 | Streaming | JSONL + consumidor | Pub/Sub + Dataflow/Cloud Function |
 | Camada analítica | Parquet Gold | BigQuery (`alfabetizacao_gold` + `alfabetizacao_silver`) |
 | Monitoramento | logs + JSON de métricas | Cloud Logging + Cloud Monitoring |
