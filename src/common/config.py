@@ -48,6 +48,25 @@ class Config:
         return REPO_ROOT / rel
 
     @property
+    def lake_mode(self) -> str:
+        """Modo do lake: 'local' (filesystem), 'gcs' (buckets do GCP) ou uma
+        URI-base fsspec explícita (ex.: 'memory://lake', usada nos testes).
+        Sobrescrevível via env LAKE_MODE."""
+        return os.getenv("LAKE_MODE") or self.get("lake.mode", "local")
+
+    def lake_uri(self, layer: str) -> str:
+        """URI fsspec da raiz de uma camada, conforme o modo do lake."""
+        mode = self.lake_mode
+        if mode == "local":
+            return self.lake_path(layer).as_posix()
+        if mode == "gcs":
+            bucket = self[f"gcp.buckets.{layer}"]
+            return f"gs://{bucket}"
+        if "://" in mode:  # URI-base explícita (testes/outras clouds)
+            return f"{mode.rstrip('/')}/{layer}"
+        raise ValueError(f"lake.mode inválido: {mode!r} (use 'local', 'gcs' ou uma URI)")
+
+    @property
     def gcp_project_id(self) -> str:
         return os.getenv("GCP_PROJECT_ID") or self.get("gcp.project_id", "")
 

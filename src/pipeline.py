@@ -12,11 +12,13 @@ Subcomandos:
 Uso:
   python -m src.pipeline download --project fiap-fase2   # 1x (baixa os dados)
   python -m src.pipeline run-all
+  python -m src.pipeline --cloud run-all    # cloud-native: lake direto no GCS
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 import polars as pl
@@ -133,6 +135,8 @@ def cmd_report(_args: argparse.Namespace) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="pipeline", description="Pipeline híbrido de alfabetização (FIAP Fase 2).")
+    p.add_argument("--cloud", action="store_true",
+                   help="modo cloud-native: lê/grava o lake direto no GCS (equivale a LAKE_MODE=gcs)")
     sub = p.add_subparsers(dest="command", required=True)
 
     d = sub.add_parser("download", help="baixa as tabelas reais do BigQuery")
@@ -160,6 +164,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> None:
     configure_utf8_stdio()
     args = build_parser().parse_args(argv)
+    if args.cloud:
+        os.environ["LAKE_MODE"] = "gcs"
+        log.info("modo cloud-native: lake em gs:// (LAKE_MODE=gcs)")
     args.func(args)
 
 
