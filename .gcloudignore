@@ -1,0 +1,14 @@
+# Não enviar para o Cloud Build (deploy --source): só o código importa.
+.git/
+.gitignore
+.venv/
+.claude/
+data/
+monitoring/metrics/
+tests/
+docs/
+__pycache__/
+*.pyc
+*.pdf
+CLAUDE.md
+README.md

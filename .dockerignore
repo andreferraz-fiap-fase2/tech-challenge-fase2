@@ -1,0 +1,14 @@
+# Espelho do .gcloudignore para builds docker locais.
+.git/
+.gitignore
+.venv/
+.claude/
+data/
+monitoring/metrics/
+tests/
+docs/
+__pycache__/
+*.pyc
+*.pdf
+CLAUDE.md
+README.md

@@ -1,0 +1,3 @@
+# Scripts que rodam em containers Linux precisam manter LF mesmo em checkout Windows
+*.sh text eol=lf
+Dockerfile text eol=lf
