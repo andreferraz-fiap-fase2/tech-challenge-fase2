@@ -15,3 +15,7 @@ google-cloud-storage>=2.0.0
 
 # Modo cloud-native (lake lido/gravado direto no GCS via fsspec)
 gcsfs>=2024.1.0
+
+# Análises e IA (notebooks/insights.ipynb) — opcional
+matplotlib>=3.9
+scikit-learn>=1.5

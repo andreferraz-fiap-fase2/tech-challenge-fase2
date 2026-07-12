@@ -152,6 +152,12 @@ A camada **Gold** (`gold/ml_features`, uma linha por município × ano) está pr
 - **Análise de desigualdade** — *clustering* de municípios por vulnerabilidade;
 - **Políticas públicas** — priorização dos municípios mais distantes da meta 2030.
 
+**Demonstração prática:** [`notebooks/insights.ipynb`](notebooks/insights.ipynb) —
+7 análises sobre a Gold, incluindo predição do próximo ciclo (Random Forest vs
+baseline), projeção da meta 2030 por UF e clusterização de vulnerabilidade
+(K-Means, 4 perfis de município). Os gráficos ficam em `notebooks/figs/`.
+Requer `matplotlib` e `scikit-learn` (ver `requirements.txt`).
+
 ---
 
 ## 8. Como executar
