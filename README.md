@@ -147,20 +147,58 @@ A ingestão via BigQuery fica no **free tier** (1 TB de consulta/mês).
 
 ## 7. Aplicação em IA
 
-A camada **Gold** (`gold/ml_features`, uma linha por município × ano) está pronta para:
-- **Predição** do `taxa_alfabetizacao` do próximo ciclo (usa taxa do ano anterior, média de proficiência, gap vs meta);
-- **Análise de desigualdade** — *clustering* de municípios por vulnerabilidade;
-- **Políticas públicas** — priorização dos municípios mais distantes da meta 2030.
+A camada **Gold** (`gold/ml_features`, uma linha por município × ano, com features
+prontas — taxa atual, taxa do ano anterior, proficiência média, meta e *gap*) é a
+base de treino. As três aplicações abaixo estão demonstradas de ponta a ponta em
+[`notebooks/insights.ipynb`](notebooks/insights.ipynb) (9 análises · 10 gráficos em
+`notebooks/figs/`), **sobre dados reais e sem coleta adicional**.
 
-**Demonstração prática:** [`notebooks/insights.ipynb`](notebooks/insights.ipynb) —
-9 análises sobre a Gold. Além do panorama, ranking, desigualdade e proficiência,
-o bloco de IA traz: **predição** da taxa do próximo ciclo (regressão);
-**comparação de modelos com validação cruzada** (baseline · Regressão Linear ·
-Random Forest · Gradient Boosting) — a régua honesta; **classificação de risco**
-("vai bater a meta?") com matriz de confusão e ROC-AUC, que gera uma **lista de
-priorização** exportável ([`notebooks/priorizacao_risco.csv`](notebooks/priorizacao_risco.csv));
-**projeção 2030** por UF; e **clusterização** de vulnerabilidade (K-Means, 4
-perfis). Gráficos em `notebooks/figs/`. Requer `matplotlib` e `scikit-learn`.
+### 7.1 Predição do próximo ciclo
+
+**Objetivo:** antecipar a taxa municipal do próximo ciclo usando apenas o que se
+sabe *antes* da prova (taxa e proficiência do ano anterior) — permitindo **agir
+antes**, não reagir depois do resultado ruim.
+
+- **Método e honestidade metodológica:** comparamos o *baseline* ingênuo ("repetir
+  a taxa do ano anterior") contra Regressão Linear, Random Forest e Gradient
+  Boosting, com **validação cruzada 5-fold**. Resultado honesto: com apenas 2 ciclos
+  municipais disponíveis, prever o *número exato* praticamente empata com o baseline
+  (~12 p.p. de erro) — evidência que **motiva reformular a pergunta**.
+- **Reformulação como risco (classificação):** *"o município vai ficar abaixo da
+  meta?"* — mais robusto e acionável. Um Random Forest separa as classes acima do
+  acaso (**AUC ≈ 0,67**, matriz de confusão + ROC) e captura **~metade** dos
+  municípios em risco, usando features conhecidas antecipadamente (a meta é definida
+  pelo INEP com antecedência — não é vazamento; o `gap` é deliberadamente excluído).
+- **Ganho futuro:** mais ciclos + fontes externas (Censo Escolar, IBGE) elevam a
+  precisão sem mudar a arquitetura.
+
+### 7.2 Análise de desigualdade
+
+- **Clusterização (K-Means)** agrupa os ~4,7 mil municípios em **4 perfis de
+  vulnerabilidade** — *Crítico · Vulnerável · Intermediário · Avançado* — cada um
+  com taxa, proficiência e distância da meta característicos.
+- **A média engana:** a distribuição por região mostra caudas enormes — dentro de
+  uma mesma região convivem municípios acima de 90% e abaixo de 20%. A desigualdade
+  é **intra-regional**, não apenas entre regiões — o que exige olhar municipal.
+- **Alavanca de maior retorno:** a relação proficiência × alfabetização é forte e
+  **não-linear em torno do corte 743** — pequenos ganhos de proficiência perto do
+  corte convertem muitos alunos em "alfabetizados".
+
+### 7.3 Políticas públicas baseadas em dados
+
+- **Lista de priorização (entregável concreto):** o classificador de risco gera um
+  ranking *out-of-fold* dos municípios com maior probabilidade de **não** atingir a
+  meta, exportado para
+  [`notebooks/priorizacao_risco.csv`](notebooks/priorizacao_risco.csv) (**4.689
+  municípios**) — a "fila de intervenção" pronta para uma secretaria.
+- **Projeção 2030 por UF:** mantido o ritmo atual, **apenas 4 de 24 UFs** alcançam
+  100% até 2030 (6 estão regredindo) — mostra onde a política precisa mudar de patamar.
+- **4 perfis → 4 estratégias:** do reconhecimento e disseminação de boas práticas
+  (*Avançado*) à intervenção estrutural (*Crítico* — **1.124 municípios**, com lista
+  nominal). Prioriza formação, material e apoio pedagógico por perfil, não por chute.
+
+> Reprodutibilidade: `python -m src.pipeline run-all` constrói a Gold e o notebook
+> lê `data/gold/`. Dependências opcionais: `matplotlib` e `scikit-learn`.
 
 ---
 
