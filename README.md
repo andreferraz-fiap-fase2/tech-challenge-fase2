@@ -132,6 +132,10 @@ relatórios em `monitoring/quality/`):
 diferença média de **~0,2 ponto percentual** em 10,4 mil municípios×ano,
 confirmando a consistência ponta-a-ponta.
 
+> Documentação detalhada dos scripts de validação — as 5 verificações, onde cada
+> uma é aplicada (tabela a tabela), o bloqueio *fail-fast* e a auditoria em JSON:
+> [`docs/qualidade.md`](docs/qualidade.md).
+
 ---
 
 ## 6. Monitoramento e FinOps
