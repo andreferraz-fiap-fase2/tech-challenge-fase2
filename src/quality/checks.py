@@ -8,6 +8,14 @@ Cobre as regras exigidas pelo desafio:
 
 Cada verificação retorna um `CheckResult`; um `QualityReport` agrega os
 resultados de uma tabela e decide se o pipeline deve prosseguir ou falhar.
+
+As regras são aplicadas na promoção Bronze -> Silver (ver src/transform/silver.py),
+com política *fail-fast*: uma falha de severidade "error" interrompe o pipeline
+antes de a camada Gold ser construída. Cada execução persiste um relatório JSON
+em monitoring/quality/<tabela>.json.
+
+Documentação completa (onde cada regra é aplicada, enforcement, auditoria e
+como estender): docs/qualidade.md.
 """
 
 from __future__ import annotations
