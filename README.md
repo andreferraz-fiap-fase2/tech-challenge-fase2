@@ -230,21 +230,39 @@ terraform init && terraform apply
 .
 ├── README.md
 ├── requirements.txt
+├── Dockerfile                     # imagem do pipeline p/ Cloud Run Job
 ├── config/settings.yaml           # configuração central (sem segredos)
-├── docs/                          # arquitetura (diagramas) e finops
+├── docs/                          # documentação técnica (ver abaixo)
+│   ├── arquitetura.md             # arquitetura, diagrama, modelo de dados, mapeamento Local↔GCP
+│   ├── qualidade.md               # scripts de validação e qualidade de dados
+│   ├── finops.md                  # otimização de custos e estimativa
+│   └── cloudrun.md                # deploy/execução serverless na GCP
 ├── infra/terraform/               # IaC GCP (GCS, BigQuery, Pub/Sub)
-├── scripts/bq_download.py         # baixa as tabelas reais do BigQuery
+├── scripts/                       # scripts utilitários (apoio ao pipeline)
+│   ├── bq_download.py             # baixa as tabelas reais do BigQuery → data/real
+│   └── cloud_run_job.sh           # entrypoint do Cloud Run Job (download→run-all→publish)
+├── notebooks/insights.ipynb       # análises e demonstrações de IA sobre a Gold
 ├── src/
 │   ├── pipeline.py                # orquestrador (CLI)
 │   ├── common/                    # config, IO do lake, logging
 │   ├── ingestion/                 # batch.py, streaming.py
 │   ├── transform/                 # silver.py, gold.py  (Medalhão)
 │   ├── quality/                   # regras de qualidade de dados
+│   ├── publish/                   # publicação GCS + BigQuery
 │   └── monitoring/                # métricas, latência, alertas
 ├── tests/                         # testes de qualidade + e2e
 ├── data/                          # data lake + credenciais (fora do git)
 └── monitoring/                    # métricas e relatórios (gerados)
 ```
+
+### Documentação técnica (`docs/`)
+
+| Arquivo | Conteúdo |
+|---|---|
+| [`docs/arquitetura.md`](docs/arquitetura.md) | Arquitetura da solução, diagrama da pipeline, modelo de dados (Gold) e mapeamento Local ↔ GCP |
+| [`docs/qualidade.md`](docs/qualidade.md) | Scripts de validação: as 5 verificações, onde cada uma é aplicada, *fail-fast* e auditoria |
+| [`docs/finops.md`](docs/finops.md) | Otimização de custos (Parquet, particionamento, single-node) e estimativa mensal |
+| [`docs/cloudrun.md`](docs/cloudrun.md) | Deploy e execução do pipeline 100% na nuvem (Cloud Run Job) + agendamento |
 
 ---
 
