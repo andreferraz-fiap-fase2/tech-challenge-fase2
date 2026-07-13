@@ -153,10 +153,14 @@ A camada **Gold** (`gold/ml_features`, uma linha por município × ano) está pr
 - **Políticas públicas** — priorização dos municípios mais distantes da meta 2030.
 
 **Demonstração prática:** [`notebooks/insights.ipynb`](notebooks/insights.ipynb) —
-7 análises sobre a Gold, incluindo predição do próximo ciclo (Random Forest vs
-baseline), projeção da meta 2030 por UF e clusterização de vulnerabilidade
-(K-Means, 4 perfis de município). Os gráficos ficam em `notebooks/figs/`.
-Requer `matplotlib` e `scikit-learn` (ver `requirements.txt`).
+9 análises sobre a Gold. Além do panorama, ranking, desigualdade e proficiência,
+o bloco de IA traz: **predição** da taxa do próximo ciclo (regressão);
+**comparação de modelos com validação cruzada** (baseline · Regressão Linear ·
+Random Forest · Gradient Boosting) — a régua honesta; **classificação de risco**
+("vai bater a meta?") com matriz de confusão e ROC-AUC, que gera uma **lista de
+priorização** exportável ([`notebooks/priorizacao_risco.csv`](notebooks/priorizacao_risco.csv));
+**projeção 2030** por UF; e **clusterização** de vulnerabilidade (K-Means, 4
+perfis). Gráficos em `notebooks/figs/`. Requer `matplotlib` e `scikit-learn`.
 
 ---
 
