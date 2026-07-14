@@ -154,25 +154,35 @@ A ingestão via BigQuery fica no **free tier** (1 TB de consulta/mês).
 A camada **Gold** (`gold/ml_features`, uma linha por município × ano, com features
 prontas — taxa atual, taxa do ano anterior, proficiência média, meta e *gap*) é a
 base de treino. As três aplicações abaixo estão demonstradas de ponta a ponta em
-[`notebooks/insights.ipynb`](notebooks/insights.ipynb) (9 análises · 10 gráficos em
+[`notebooks/insights.ipynb`](notebooks/insights.ipynb) (10 análises · 12 gráficos em
 `notebooks/figs/`), **sobre dados reais e sem coleta adicional**.
 
 ### 7.1 Predição do próximo ciclo
 
 **Objetivo:** antecipar a taxa municipal do próximo ciclo usando apenas o que se
-sabe *antes* da prova (taxa e proficiência do ano anterior) — permitindo **agir
-antes**, não reagir depois do resultado ruim.
+sabe *antes* da prova — permitindo **agir antes**, não reagir depois do resultado ruim.
 
 - **Método e honestidade metodológica:** comparamos o *baseline* ingênuo ("repetir
   a taxa do ano anterior") contra Regressão Linear, Random Forest e Gradient
-  Boosting, com **validação cruzada 5-fold**. Resultado honesto: com apenas 2 ciclos
-  municipais disponíveis, prever o *número exato* praticamente empata com o baseline
-  (~12 p.p. de erro) — evidência que **motiva reformular a pergunta**.
+  Boosting, com **validação cruzada 5-fold embaralhada** (os dados vêm ordenados
+  por código de município, que embute a UF — sem embaralhar, cada fold viraria um
+  bloco geográfico). Resultado honesto: com agregados de apenas 2 ciclos, o ganho
+  sobre o baseline é **modesto** (melhor modelo ≈ 11,0 vs 12,4 p.p.) e o erro segue
+  alto demais para confiar no número cravado — evidência que **motiva reformular a
+  pergunta**.
 - **Reformulação como risco (classificação):** *"o município vai ficar abaixo da
   meta?"* — mais robusto e acionável. Um Random Forest separa as classes acima do
   acaso (**AUC ≈ 0,67**, matriz de confusão + ROC) e captura **~metade** dos
   municípios em risco, usando features conhecidas antecipadamente (a meta é definida
   pelo INEP com antecedência — não é vazamento; o `gap` é deliberadamente excluído).
+- **Mais sinal com os mesmos dados (seção 7.2 do notebook):** o eixo temporal é
+  curto (2 ciclos), mas o eixo *aluno* é profundo (3,9 mi). Extraindo do microdado a
+  **forma da distribuição** de proficiência de cada município — em especial a fração
+  de alunos **logo abaixo do corte 743** (os "conversíveis"), além de dispersão e
+  presença na prova — o AUC sobe de 0,64 para **≈ 0,71** e o erro da regressão cai
+  para **≈ 10,4 p.p.** A correlação entre "% quase lá" e a variação do ciclo
+  seguinte (r ≈ 0,37) confirma o mecanismo: **a média esconde quem está a um passo
+  de converter**.
 - **Ganho futuro:** mais ciclos + fontes externas (Censo Escolar, IBGE) elevam a
   precisão sem mudar a arquitetura.
 
